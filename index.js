@@ -37,7 +37,7 @@ const typeDefs = gql`
     movie: Movie!
     content: String!
     stars: Int
-    upvotes: Int!
+    upvotes: [ID]!
   }
 
   type Movie {
@@ -48,6 +48,8 @@ const typeDefs = gql`
   }
 
   type Token {
+    id: ID!
+    name: String!
     id: ID!
     name: String!
     value: String!
@@ -68,12 +70,7 @@ const typeDefs = gql`
     updateUser(id: ID!, name: String, email: String): User!
     deleteUser(id: ID!): Boolean!
     login(name: String!, password: String!): Token
-    createComment(
-      movie: String!
-      content: String!
-      title: String
-      stars: Int
-    ): Comment!
+    createComment(movie: String!, content: String!, stars: Int): Comment!
     updateComment(id: ID!, content: String, stars: Int): Comment!
     deleteComment(id: ID!): Boolean!
     upvoteComment(id: ID!): Boolean!
@@ -86,10 +83,16 @@ const typeDefs = gql`
 const resolvers = {
   Query: {
     movies: async () => await Movie.find({}),
+    movie: async (_, args) => await Movie.findOne({ _id: args.id }),
     movie: async (_, args) => await Movie.findOne({ name: args.name }),
     comments: async () => await Comment.find({}),
     comment: async (_, args) => await Comment.findOne({ _id: args.id }),
+    comment: async (_, args) => await Comment.findOne({ _id: args.id }),
     users: async () => await User.find({}),
+    user: async (_, args) => await User.findOne({ _id: args.id }),
+    me: (root, args, context) => {
+      return context.currentUser
+    },
     user: async (_, args) => await User.findOne({ _id: args.id }),
     me: (root, args, context) => {
       return context.currentUser
@@ -103,8 +106,11 @@ const resolvers = {
   Comment: {
     movie: async (root) => {
       return await Movie.findOne({ _id: root.movie })
+      return await Movie.findOne({ _id: root.movie })
     },
     user: async (root) => {
+      result = await User.findOne({ _id: root.user })
+      return result
       result = await User.findOne({ _id: root.user })
       return result
     },
@@ -244,6 +250,6 @@ const server = new ApolloServer({
   },
 })
 
-server.listen().then(({ url }) => {
+server.listen({ port: process.env.PORT || 4000 }).then(({ url }) => {
   console.log(`Server ready at ${url}`)
 })
