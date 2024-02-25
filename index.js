@@ -48,6 +48,8 @@ const typeDefs = gql`
   }
 
   type Token {
+    id: ID!
+    name: String!
     value: String!
   }
 
@@ -74,7 +76,7 @@ const typeDefs = gql`
     ): Comment!
     updateComment(id: ID!, content: String, stars: Int): Comment!
     deleteComment(id: ID!): Boolean!
-    upvoteComment(id: ID!): Comment!
+    upvoteComment(id: ID!): Boolean!
     createMovie(title: String!, image: String!): Movie!
     updateMovie(id: ID!, title: String, image: String!): Movie!
     deleteMovie(id: ID!): Boolean!
@@ -84,12 +86,14 @@ const typeDefs = gql`
 const resolvers = {
   Query: {
     movies: async () => await Movie.find({}),
-    movie: async (_, args) => await Movie.find({ name: args.name }),
+    movie: async (_, args) => await Movie.findOne({ name: args.name }),
     comments: async () => await Comment.find({}),
-    comment: async (_, args) => await Comment.find({ _id: args.id }),
+    comment: async (_, args) => await Comment.findOne({ _id: args.id }),
     users: async () => await User.find({}),
-    user: async (_, args) => await User.find({ _id: user.id }),
-    me: (root, args, context) => context.currentUser,
+    user: async (_, args) => await User.findOne({ _id: args.id }),
+    me: (root, args, context) => {
+      return context.currentUser
+    },
   },
   User: {
     comments: async (root) => {
@@ -98,13 +102,13 @@ const resolvers = {
   },
   Comment: {
     movie: async (root) => {
-      return await Movie.find({ _id: root.movie })
+      return await Movie.findOne({ _id: root.movie })
     },
     user: async (root) => {
-      return await User.find({ _id: root.user })
+      result = await User.findOne({ _id: root.user })
+      return result
     },
     upvotes: async (root) => {
-      console.log(root)
       return await root.upvotes.length
     },
   },
@@ -150,7 +154,7 @@ const resolvers = {
         id: user._id,
       }
       const token = jwt.sign(userForToken, process.env.JWT_SECRET)
-      return { value: token }
+      return { id: user._id, name: user.name, value: token }
     },
     createComment: async (_, args, context) => {
       if (!context.currentUser) {
@@ -188,9 +192,11 @@ const resolvers = {
       const comment = await Comment.findOne({ _id: args.id })
       const upvotes = comment.upvotes
       if (upvotes.includes(context.currentUser._id)) {
-        throw new UserInputError("cannot upvote comment multiple times", {
-          invalidArgs: context.currentUser,
-        })
+        await Comment.findOneAndUpdate(
+          { _id: args.id },
+          { $pull: { upvotes: context.currentUser._id } }
+        )
+        return false
       }
 
       if (context.currentUser._id === comment.user) {
@@ -198,12 +204,12 @@ const resolvers = {
           invalidArgs: context.currentUser,
         })
       }
-      const result = Comment.findOneAndUpdate(
+      await Comment.findOneAndUpdate(
         { _id: args.id },
         { $push: { upvotes: context.currentUser } }
       )
 
-      return result
+      return true
     },
     createMovie: async (_, args) => {
       if (Movie.find({ title: args.title })) {
